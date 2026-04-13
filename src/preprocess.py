@@ -15,13 +15,29 @@ STANDARD_COLUMNS = [
     "sentiment_label",
 ]
 
+PROCESSED_OUTPUT_RELATIVE_PATHS = {
+    "signals": Path("data") / "processed" / "reviews_with_signals.csv",
+    "category_summary": Path("data") / "processed" / "category_summary.csv",
+    "sentiment_summary": Path("data") / "processed" / "sentiment_summary.csv",
+    "monthly_summary": Path("data") / "processed" / "monthly_sentiment_summary.csv",
+}
+
+CHART_OUTPUT_RELATIVE_PATHS = {
+    "category_review_count": Path("reports") / "figures" / "category_review_count.png",
+    "category_avg_sentiment": Path("reports") / "figures" / "category_avg_sentiment.png",
+}
+
+REPORT_OUTPUT_RELATIVE_PATH = Path("reports") / "insight_report.md"
+
 COLUMN_ALIASES = {
     "review_text": [
         "review_text",
         "review text",
         "review",
         "review_body",
+        "reviewbody",
         "review_content",
+        "review content",
         "text",
         "content",
         "body",
@@ -35,6 +51,7 @@ COLUMN_ALIASES = {
         "review rating",
         "review_rating",
         "star_rating",
+        "starrating",
         "star rating",
         "stars",
         "score",
@@ -45,8 +62,10 @@ COLUMN_ALIASES = {
     "date": [
         "date",
         "review_date",
+        "reviewdate",
         "review date",
         "date of experience",
+        "experience date",
         "timestamp",
         "time",
         "created_at",
@@ -57,6 +76,7 @@ COLUMN_ALIASES = {
     "review_title": [
         "review_title",
         "review title",
+        "reviewtitle",
         "title",
         "headline",
         "summary",
@@ -108,8 +128,62 @@ def ensure_project_directories(base_dir: str | Path = ".") -> dict[str, Path]:
     return paths
 
 
+def get_processed_output_paths(base_dir: str | Path = ".") -> dict[str, Path]:
+    base_path = Path(base_dir)
+    return {
+        name: base_path / relative_path
+        for name, relative_path in PROCESSED_OUTPUT_RELATIVE_PATHS.items()
+    }
+
+
+def get_chart_output_paths(base_dir: str | Path = ".") -> dict[str, Path]:
+    base_path = Path(base_dir)
+    return {
+        name: base_path / relative_path
+        for name, relative_path in CHART_OUTPUT_RELATIVE_PATHS.items()
+    }
+
+
+def get_report_output_path(base_dir: str | Path = ".") -> Path:
+    return Path(base_dir) / REPORT_OUTPUT_RELATIVE_PATH
+
+
 def normalize_column_name(column_name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(column_name).lower())
+
+
+def score_column_match(column_name: str, logical_name: str) -> int:
+    normalized_name = normalize_column_name(column_name)
+    aliases = COLUMN_ALIASES[logical_name]
+
+    for alias_index, alias in enumerate(aliases):
+        normalized_alias = normalize_column_name(alias)
+        if normalized_name == normalized_alias:
+            return 300 - alias_index
+
+    for alias_index, alias in enumerate(aliases):
+        normalized_alias = normalize_column_name(alias)
+        if normalized_alias and normalized_alias in normalized_name:
+            return 200 - alias_index
+
+    token_matches = sum(
+        1 for token in TOKEN_HINTS[logical_name] if token in normalized_name
+    )
+    return token_matches * 25
+
+
+def get_ranked_candidate_columns(
+    columns: list[str] | pd.Index,
+    logical_name: str,
+) -> list[str]:
+    scored_columns = []
+    for column_name in [str(column) for column in columns]:
+        score = score_column_match(column_name, logical_name)
+        if score > 0:
+            scored_columns.append((column_name, score))
+
+    scored_columns.sort(key=lambda item: (-item[1], item[0]))
+    return [column_name for column_name, _ in scored_columns]
 
 
 def resolve_review_csv_path(base_dir: str | Path = ".") -> Path | None:
@@ -144,25 +218,12 @@ def infer_column_mapping(
     for logical_name in fields_to_map:
         best_match = ""
         best_score = 0
-        normalized_aliases = {
-            normalize_column_name(alias) for alias in COLUMN_ALIASES[logical_name]
-        }
 
         for column_name in available_columns:
             if column_name in used_columns:
                 continue
 
-            normalized_name = normalize_column_name(column_name)
-            score = 0
-
-            if normalized_name in normalized_aliases:
-                score = 100
-            elif any(alias in normalized_name for alias in normalized_aliases):
-                score = 80
-            else:
-                score = sum(
-                    1 for token in TOKEN_HINTS[logical_name] if token in normalized_name
-                )
+            score = score_column_match(column_name, logical_name)
 
             if score > best_score:
                 best_match = column_name
@@ -253,6 +314,17 @@ def standardize_review_columns(
         if required_column not in standardized_df.columns:
             standardized_df[required_column] = pd.NA
 
+    for logical_name in ("review_text", "rating", "date"):
+        fallback_candidates = get_ranked_candidate_columns(review_df.columns, logical_name)
+        primary_source = resolved_mapping.get(logical_name)
+
+        for fallback_column in fallback_candidates:
+            if fallback_column == primary_source:
+                continue
+            standardized_df[logical_name] = standardized_df[logical_name].fillna(
+                review_df[fallback_column]
+            )
+
     if "review_title" in standardized_df.columns:
         standardized_df["review_text"] = standardized_df.apply(
             lambda row: combine_review_title_and_text(
@@ -273,11 +345,21 @@ def standardize_review_columns(
     standardized_df["date"] = pd.to_datetime(
         standardized_df["date"], errors="coerce", utc=True
     ).dt.tz_localize(None)
+    standardized_df = standardized_df.drop_duplicates(
+        subset=["review_text", "rating", "date"]
+    ).reset_index(drop=True)
     standardized_df["category"] = "unlabeled"
     standardized_df["sentiment_score"] = 0.0
     standardized_df["sentiment_label"] = "neutral"
 
     return standardized_df[STANDARD_COLUMNS]
+
+
+def preprocess_dataframe(
+    review_df: pd.DataFrame,
+    column_mapping: dict[str, str] | None = None,
+) -> pd.DataFrame:
+    return standardize_review_columns(review_df, column_mapping=column_mapping)
 
 
 def load_and_standardize_reviews(

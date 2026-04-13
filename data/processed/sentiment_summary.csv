@@ -1,4 +1,4 @@
 sentiment_label,review_count,avg_rating,avg_sentiment_score
-negative,13889,1.08,-2.47
-positive,5985,4.69,2.84
-neutral,1181,2.5,-0.04
+negative,12581,1.1130455521106606,-1.86
+positive,6592,4.3878268848447775,2.5
+neutral,2039,1.727929788332473,0.0

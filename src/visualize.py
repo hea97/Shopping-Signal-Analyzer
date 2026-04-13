@@ -5,6 +5,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+try:
+    from .preprocess import get_chart_output_paths
+except ImportError:  # pragma: no cover
+    from preprocess import get_chart_output_paths
+
 
 def save_category_review_count_chart(
     category_summary: pd.DataFrame,
@@ -61,18 +66,16 @@ def create_all_charts(
     summary_tables: dict[str, pd.DataFrame],
     base_dir: str | Path = ".",
 ) -> dict[str, Path]:
-    figure_dir = Path(base_dir) / "reports" / "figures"
-    figure_dir.mkdir(parents=True, exist_ok=True)
-
+    chart_paths = get_chart_output_paths(base_dir)
     category_summary = summary_tables["category_summary"]
-    chart_paths = {
+    saved_chart_paths = {
         "category_review_count": save_category_review_count_chart(
             category_summary,
-            figure_dir / "category_review_count.png",
+            chart_paths["category_review_count"],
         ),
         "category_avg_sentiment": save_category_avg_sentiment_chart(
             category_summary,
-            figure_dir / "category_avg_sentiment.png",
+            chart_paths["category_avg_sentiment"],
         ),
     }
-    return chart_paths
+    return saved_chart_paths

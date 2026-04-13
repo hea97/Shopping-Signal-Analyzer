@@ -5,9 +5,23 @@ from pathlib import Path
 import pandas as pd
 
 try:
-    from .preprocess import ensure_project_directories
+    from .labeler import OTHER_CATEGORY
+    from .preprocess import (
+        CHART_OUTPUT_RELATIVE_PATHS,
+        PROCESSED_OUTPUT_RELATIVE_PATHS,
+        ensure_project_directories,
+        get_processed_output_paths,
+        get_report_output_path,
+    )
 except ImportError:  # pragma: no cover
-    from preprocess import ensure_project_directories
+    from labeler import OTHER_CATEGORY
+    from preprocess import (
+        CHART_OUTPUT_RELATIVE_PATHS,
+        PROCESSED_OUTPUT_RELATIVE_PATHS,
+        ensure_project_directories,
+        get_processed_output_paths,
+        get_report_output_path,
+    )
 
 
 def build_signal_features(review_df: pd.DataFrame) -> pd.DataFrame:
@@ -53,14 +67,13 @@ def build_summary_tables(feature_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
         .reset_index(drop=True)
     )
 
-    dated_df = feature_df[feature_df["review_month"] != "unknown"].copy()
-    if dated_df.empty:
+    if feature_df.empty:
         monthly_summary = pd.DataFrame(
             columns=["review_month", "review_count", "avg_sentiment_score"]
         )
     else:
         monthly_summary = (
-            dated_df.groupby("review_month", dropna=False)
+            feature_df.groupby("review_month", dropna=False)
             .agg(
                 review_count=("review_text", "size"),
                 avg_sentiment_score=("sentiment_score", "mean"),
@@ -89,6 +102,10 @@ def format_markdown_value(value: object) -> str:
     return str(value)
 
 
+def format_display_path(path_value: str | Path) -> str:
+    return Path(path_value).as_posix()
+
+
 def dataframe_to_markdown_table(summary_df: pd.DataFrame) -> str:
     if summary_df.empty:
         return "| no_data |\n| --- |\n| no rows available |"
@@ -115,7 +132,9 @@ def build_insight_report_markdown(
 
     top_category = category_summary.iloc[0] if not category_summary.empty else None
 
-    eligible_categories = category_summary[category_summary["category"] != "general"].copy()
+    eligible_categories = category_summary[
+        category_summary["category"] != OTHER_CATEGORY
+    ].copy()
     if eligible_categories.empty:
         eligible_categories = category_summary.copy()
 
@@ -184,7 +203,7 @@ def build_insight_report_markdown(
         "",
         "## Dataset",
         "",
-        f"- source file: `{dataset_label}`",
+        f"- source file: `{format_display_path(dataset_label)}`",
         f"- review count: {len(feature_df)}",
         f"- date range: {date_range}",
         "- inferred column mapping:",
@@ -196,12 +215,12 @@ def build_insight_report_markdown(
         "",
         "## Files generated",
         "",
-        "- processed reviews: `data/processed/reviews_with_signals.csv`",
-        "- category summary: `data/processed/category_summary.csv`",
-        "- sentiment summary: `data/processed/sentiment_summary.csv`",
-        "- monthly summary: `data/processed/monthly_sentiment_summary.csv`",
-        "- chart 1: `reports/figures/category_review_count.png`",
-        "- chart 2: `reports/figures/category_avg_sentiment.png`",
+        f"- processed reviews: `{format_display_path(PROCESSED_OUTPUT_RELATIVE_PATHS['signals'])}`",
+        f"- category summary: `{format_display_path(PROCESSED_OUTPUT_RELATIVE_PATHS['category_summary'])}`",
+        f"- sentiment summary: `{format_display_path(PROCESSED_OUTPUT_RELATIVE_PATHS['sentiment_summary'])}`",
+        f"- monthly summary: `{format_display_path(PROCESSED_OUTPUT_RELATIVE_PATHS['monthly_summary'])}`",
+        f"- chart 1: `{format_display_path(CHART_OUTPUT_RELATIVE_PATHS['category_review_count'])}`",
+        f"- chart 2: `{format_display_path(CHART_OUTPUT_RELATIVE_PATHS['category_avg_sentiment'])}`",
         "",
         "## Category summary snapshot",
         "",
@@ -221,15 +240,8 @@ def save_pipeline_outputs(
     summary_tables: dict[str, pd.DataFrame],
     base_dir: str | Path = ".",
 ) -> dict[str, Path]:
-    project_paths = ensure_project_directories(base_dir)
-    processed_dir = project_paths["processed"]
-
-    output_paths = {
-        "signals": processed_dir / "reviews_with_signals.csv",
-        "category_summary": processed_dir / "category_summary.csv",
-        "sentiment_summary": processed_dir / "sentiment_summary.csv",
-        "monthly_summary": processed_dir / "monthly_sentiment_summary.csv",
-    }
+    ensure_project_directories(base_dir)
+    output_paths = get_processed_output_paths(base_dir)
 
     feature_df.to_csv(output_paths["signals"], index=False)
     summary_tables["category_summary"].to_csv(output_paths["category_summary"], index=False)
@@ -248,8 +260,8 @@ def save_insight_report(
     column_mapping: dict[str, str] | None = None,
     base_dir: str | Path = ".",
 ) -> Path:
-    project_paths = ensure_project_directories(base_dir)
-    report_path = project_paths["reports"] / "insight_report.md"
+    ensure_project_directories(base_dir)
+    report_path = get_report_output_path(base_dir)
     dataset_path_obj = Path(dataset_path)
     base_path = Path(base_dir).resolve()
 

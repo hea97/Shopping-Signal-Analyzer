@@ -1,35 +1,46 @@
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 
+
+OTHER_CATEGORY = "other"
 
 CATEGORY_RULES = {
     "customer_service": [
         "customer service",
         "customer support",
+        "customer-care",
         "support team",
+        "support",
         "customer care",
         "representative",
         "agent",
         "chat support",
+        "chat",
         "call center",
-        "customer care",
         "help desk",
+        "service team",
     ],
     "delivery_shipping": [
         "delivery",
         "delivered",
         "shipping",
         "shipped",
+        "shipment",
         "arrived",
         "arrival",
         "package",
+        "packaging",
         "parcel",
         "courier",
         "driver",
         "tracking",
         "late delivery",
         "lost package",
+        "missing package",
+        "not delivered",
     ],
     "refunds_returns": [
         "refund",
@@ -41,17 +52,21 @@ CATEGORY_RULES = {
         "replaced",
         "money back",
         "reimburse",
+        "reimbursement",
     ],
     "account_access": [
         "account",
         "login",
         "log in",
+        "sign in",
         "password",
         "verification",
+        "verification code",
         "otp",
         "security code",
         "locked",
         "suspended",
+        "blocked",
         "closed my account",
         "freeze my account",
         "document review",
@@ -71,6 +86,8 @@ CATEGORY_RULES = {
         "fee",
         "fees",
         "subscription",
+        "charged twice",
+        "renewal",
     ],
     "prime_membership": [
         "amazon prime",
@@ -95,6 +112,8 @@ CATEGORY_RULES = {
         "condition",
     ],
     "order_management": [
+        "order",
+        "ordered",
         "place order",
         "placing an order",
         "order cancelled",
@@ -121,16 +140,24 @@ CATEGORY_PRIORITY = [
     "order_management",
 ]
 
+CATEGORY_PATTERNS = {
+    category_name: [
+        re.compile(rf"(?<!\w){re.escape(keyword.lower())}(?!\w)")
+        for keyword in keywords
+    ]
+    for category_name, keywords in CATEGORY_RULES.items()
+}
 
-def count_keyword_hits(review_text: str, keywords: list[str]) -> int:
+
+def count_keyword_hits(review_text: str, patterns: list[re.Pattern[str]]) -> int:
     lowered_text = review_text.lower()
-    return sum(lowered_text.count(keyword) for keyword in keywords)
+    return sum(len(pattern.findall(lowered_text)) for pattern in patterns)
 
 
 def get_category_scores(review_text: str) -> dict[str, int]:
     return {
-        category_name: count_keyword_hits(review_text, keywords)
-        for category_name, keywords in CATEGORY_RULES.items()
+        category_name: count_keyword_hits(review_text, CATEGORY_PATTERNS[category_name])
+        for category_name in CATEGORY_RULES
     }
 
 
@@ -143,7 +170,7 @@ def label_review_category(review_text: str) -> str:
     }
 
     if not positive_scores:
-        return "general"
+        return OTHER_CATEGORY
 
     best_category = max(
         positive_scores.items(),
