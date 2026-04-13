@@ -24,6 +24,24 @@ except ImportError:  # pragma: no cover
     )
 
 
+def round_numeric_columns(summary_df: pd.DataFrame) -> pd.DataFrame:
+    numeric_columns = summary_df.select_dtypes(include="number").columns
+    summary_df[numeric_columns] = summary_df[numeric_columns].round(2)
+    return summary_df
+
+
+def format_markdown_value(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    return str(value)
+
+
+def format_display_path(path_value: str | Path) -> str:
+    return Path(path_value).as_posix()
+
+
 def build_signal_features(review_df: pd.DataFrame) -> pd.DataFrame:
     feature_df = review_df.copy()
     feature_df["review_length"] = (
@@ -40,7 +58,7 @@ def build_signal_features(review_df: pd.DataFrame) -> pd.DataFrame:
     return feature_df
 
 
-def build_summary_tables(feature_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+def build_category_summary(feature_df: pd.DataFrame) -> pd.DataFrame:
     category_summary = (
         feature_df.groupby("category", dropna=False)
         .agg(
@@ -54,7 +72,10 @@ def build_summary_tables(feature_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
         .sort_values(["review_count", "avg_sentiment_score"], ascending=[False, False])
         .reset_index(drop=True)
     )
+    return round_numeric_columns(category_summary)
 
+
+def build_sentiment_summary(feature_df: pd.DataFrame) -> pd.DataFrame:
     sentiment_summary = (
         feature_df.groupby("sentiment_label", dropna=False)
         .agg(
@@ -66,44 +87,34 @@ def build_summary_tables(feature_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
         .sort_values("review_count", ascending=False)
         .reset_index(drop=True)
     )
+    return round_numeric_columns(sentiment_summary)
 
+
+def build_monthly_summary(feature_df: pd.DataFrame) -> pd.DataFrame:
     if feature_df.empty:
-        monthly_summary = pd.DataFrame(
+        return pd.DataFrame(
             columns=["review_month", "review_count", "avg_sentiment_score"]
         )
-    else:
-        monthly_summary = (
-            feature_df.groupby("review_month", dropna=False)
-            .agg(
-                review_count=("review_text", "size"),
-                avg_sentiment_score=("sentiment_score", "mean"),
-            )
-            .reset_index()
-            .sort_values("review_month")
-            .reset_index(drop=True)
+
+    monthly_summary = (
+        feature_df.groupby("review_month", dropna=False)
+        .agg(
+            review_count=("review_text", "size"),
+            avg_sentiment_score=("sentiment_score", "mean"),
         )
+        .reset_index()
+        .sort_values("review_month")
+        .reset_index(drop=True)
+    )
+    return round_numeric_columns(monthly_summary)
 
-    for summary_df in (category_summary, sentiment_summary, monthly_summary):
-        numeric_columns = summary_df.select_dtypes(include="number").columns
-        summary_df[numeric_columns] = summary_df[numeric_columns].round(2)
 
+def build_summary_tables(feature_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     return {
-        "category_summary": category_summary,
-        "sentiment_summary": sentiment_summary,
-        "monthly_summary": monthly_summary,
+        "category_summary": build_category_summary(feature_df),
+        "sentiment_summary": build_sentiment_summary(feature_df),
+        "monthly_summary": build_monthly_summary(feature_df),
     }
-
-
-def format_markdown_value(value: object) -> str:
-    if pd.isna(value):
-        return ""
-    if isinstance(value, float):
-        return f"{value:.2f}"
-    return str(value)
-
-
-def format_display_path(path_value: str | Path) -> str:
-    return Path(path_value).as_posix()
 
 
 def dataframe_to_markdown_table(summary_df: pd.DataFrame) -> str:
@@ -244,11 +255,13 @@ def save_pipeline_outputs(
     output_paths = get_processed_output_paths(base_dir)
 
     feature_df.to_csv(output_paths["signals"], index=False)
-    summary_tables["category_summary"].to_csv(output_paths["category_summary"], index=False)
-    summary_tables["sentiment_summary"].to_csv(
-        output_paths["sentiment_summary"], index=False
-    )
-    summary_tables["monthly_summary"].to_csv(output_paths["monthly_summary"], index=False)
+    summary_key_to_output_key = {
+        "category_summary": "category_summary",
+        "sentiment_summary": "sentiment_summary",
+        "monthly_summary": "monthly_summary",
+    }
+    for summary_key, output_key in summary_key_to_output_key.items():
+        summary_tables[summary_key].to_csv(output_paths[output_key], index=False)
 
     return output_paths
 

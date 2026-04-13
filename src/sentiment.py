@@ -4,6 +4,9 @@ import re
 
 import pandas as pd
 
+POSITIVE_SENTIMENT_THRESHOLD = 1.0
+NEGATIVE_SENTIMENT_THRESHOLD = -1.0
+
 POSITIVE_WORDS = {
     "amazing",
     "best",
@@ -77,11 +80,20 @@ def score_rating_adjustment(rating: float | int | None = None) -> float:
     if pd.isna(rating):
         return 0.0
 
-    if float(rating) >= 4.0:
+    numeric_rating = float(rating)
+    if numeric_rating >= 4.0:
         return 1.0
-    if float(rating) <= 2.0:
+    if numeric_rating <= 2.0:
         return -1.0
     return 0.0
+
+
+def classify_sentiment_label(sentiment_score: float) -> str:
+    if sentiment_score >= POSITIVE_SENTIMENT_THRESHOLD:
+        return "positive"
+    if sentiment_score <= NEGATIVE_SENTIMENT_THRESHOLD:
+        return "negative"
+    return "neutral"
 
 
 def score_rule_based_sentiment(
@@ -92,26 +104,25 @@ def score_rule_based_sentiment(
     _, _, text_score = score_text_sentiment(review_text)
     rating_score = score_rating_adjustment(rating)
     sentiment_score = round(text_score + rating_score, 2)
-
-    if sentiment_score >= 1.0:
-        sentiment_label = "positive"
-    elif sentiment_score <= -1.0:
-        sentiment_label = "negative"
-    else:
-        sentiment_label = "neutral"
-
+    sentiment_label = classify_sentiment_label(sentiment_score)
     return sentiment_score, sentiment_label
 
 
-def apply_rule_based_sentiment(review_df: pd.DataFrame) -> pd.DataFrame:
-    sentiment_df = review_df.copy()
-    scores_and_labels = sentiment_df.apply(
+def build_sentiment_output(review_df: pd.DataFrame) -> pd.DataFrame:
+    sentiment_results = review_df.apply(
         lambda row: score_rule_based_sentiment(
             row["review_text"],
             row["rating"],
         ),
         axis=1,
+        result_type="expand",
     )
-    sentiment_df["sentiment_score"] = scores_and_labels.map(lambda item: item[0])
-    sentiment_df["sentiment_label"] = scores_and_labels.map(lambda item: item[1])
+    sentiment_results.columns = ["sentiment_score", "sentiment_label"]
+    return sentiment_results
+
+
+def apply_rule_based_sentiment(review_df: pd.DataFrame) -> pd.DataFrame:
+    sentiment_df = review_df.copy()
+    sentiment_output = build_sentiment_output(sentiment_df)
+    sentiment_df[["sentiment_score", "sentiment_label"]] = sentiment_output
     return sentiment_df

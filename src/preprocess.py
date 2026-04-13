@@ -6,6 +6,14 @@ import re
 import pandas as pd
 
 
+REQUIRED_STANDARD_FIELDS = (
+    "review_text",
+    "rating",
+    "date",
+)
+OPTIONAL_STANDARD_FIELDS = ("review_title",)
+DEFAULT_MAPPING_FIELDS = REQUIRED_STANDARD_FIELDS + OPTIONAL_STANDARD_FIELDS
+
 STANDARD_COLUMNS = [
     "review_text",
     "rating",
@@ -114,6 +122,17 @@ PUNCTUATION_TRANSLATION = str.maketrans(
 )
 
 
+def resolve_named_paths(
+    relative_paths: dict[str, Path],
+    base_dir: str | Path = ".",
+) -> dict[str, Path]:
+    base_path = Path(base_dir)
+    return {
+        name: base_path / relative_path
+        for name, relative_path in relative_paths.items()
+    }
+
+
 def ensure_project_directories(base_dir: str | Path = ".") -> dict[str, Path]:
     base_path = Path(base_dir)
     paths = {
@@ -129,19 +148,11 @@ def ensure_project_directories(base_dir: str | Path = ".") -> dict[str, Path]:
 
 
 def get_processed_output_paths(base_dir: str | Path = ".") -> dict[str, Path]:
-    base_path = Path(base_dir)
-    return {
-        name: base_path / relative_path
-        for name, relative_path in PROCESSED_OUTPUT_RELATIVE_PATHS.items()
-    }
+    return resolve_named_paths(PROCESSED_OUTPUT_RELATIVE_PATHS, base_dir)
 
 
 def get_chart_output_paths(base_dir: str | Path = ".") -> dict[str, Path]:
-    base_path = Path(base_dir)
-    return {
-        name: base_path / relative_path
-        for name, relative_path in CHART_OUTPUT_RELATIVE_PATHS.items()
-    }
+    return resolve_named_paths(CHART_OUTPUT_RELATIVE_PATHS, base_dir)
 
 
 def get_report_output_path(base_dir: str | Path = ".") -> Path:
@@ -186,6 +197,26 @@ def get_ranked_candidate_columns(
     return [column_name for column_name, _ in scored_columns]
 
 
+def choose_best_column_match(
+    available_columns: list[str],
+    logical_name: str,
+    used_columns: set[str],
+) -> tuple[str, int]:
+    best_match = ""
+    best_score = 0
+
+    for column_name in available_columns:
+        if column_name in used_columns:
+            continue
+
+        score = score_column_match(column_name, logical_name)
+        if score > best_score:
+            best_match = column_name
+            best_score = score
+
+    return best_match, best_score
+
+
 def resolve_review_csv_path(base_dir: str | Path = ".") -> Path | None:
     base_path = Path(base_dir)
 
@@ -213,21 +244,14 @@ def infer_column_mapping(
     used_columns: set[str] = set()
     mapping: dict[str, str] = {}
 
-    fields_to_map = logical_fields or ("review_text", "rating", "date", "review_title")
+    fields_to_map = logical_fields or DEFAULT_MAPPING_FIELDS
 
     for logical_name in fields_to_map:
-        best_match = ""
-        best_score = 0
-
-        for column_name in available_columns:
-            if column_name in used_columns:
-                continue
-
-            score = score_column_match(column_name, logical_name)
-
-            if score > best_score:
-                best_match = column_name
-                best_score = score
+        best_match, best_score = choose_best_column_match(
+            available_columns=available_columns,
+            logical_name=logical_name,
+            used_columns=used_columns,
+        )
 
         if best_match and best_score > 0:
             mapping[logical_name] = best_match
@@ -236,24 +260,32 @@ def infer_column_mapping(
     return mapping
 
 
+def build_read_csv_attempts(
+    read_csv_kwargs: dict[str, object],
+) -> list[dict[str, object]]:
+    read_csv_attempts = [dict(read_csv_kwargs)]
+
+    if "engine" in read_csv_kwargs:
+        return read_csv_attempts
+
+    read_csv_attempts.extend(
+        [
+            {**read_csv_kwargs, "engine": "python"},
+            {**read_csv_kwargs, "engine": "python", "encoding": "utf-8-sig"},
+            {
+                **read_csv_kwargs,
+                "engine": "python",
+                "encoding_errors": "replace",
+            },
+        ]
+    )
+    return read_csv_attempts
+
+
 def read_review_csv(csv_path: str | Path, **read_csv_kwargs: object) -> pd.DataFrame:
-    attempt_kwargs_list = [dict(read_csv_kwargs)]
-
-    if "engine" not in read_csv_kwargs:
-        attempt_kwargs_list.extend(
-            [
-                {**read_csv_kwargs, "engine": "python"},
-                {**read_csv_kwargs, "engine": "python", "encoding": "utf-8-sig"},
-                {
-                    **read_csv_kwargs,
-                    "engine": "python",
-                    "encoding_errors": "replace",
-                },
-            ]
-        )
-
+    read_csv_attempts = build_read_csv_attempts(dict(read_csv_kwargs))
     last_error: Exception | None = None
-    for attempt_kwargs in attempt_kwargs_list:
+    for attempt_kwargs in read_csv_attempts:
         try:
             return pd.read_csv(csv_path, **attempt_kwargs)
         except Exception as exc:  # pragma: no cover
@@ -294,6 +326,32 @@ def combine_review_title_and_text(review_title: object, review_text: object) -> 
     return f"{cleaned_title}. {cleaned_text}"
 
 
+def backfill_standardized_columns(
+    standardized_df: pd.DataFrame,
+    source_df: pd.DataFrame,
+    resolved_mapping: dict[str, str],
+) -> pd.DataFrame:
+    for logical_name in REQUIRED_STANDARD_FIELDS:
+        fallback_candidates = get_ranked_candidate_columns(source_df.columns, logical_name)
+        primary_source = resolved_mapping.get(logical_name)
+
+        for fallback_column in fallback_candidates:
+            if fallback_column == primary_source:
+                continue
+            standardized_df[logical_name] = standardized_df[logical_name].fillna(
+                source_df[fallback_column]
+            )
+
+    return standardized_df
+
+
+def add_default_signal_columns(standardized_df: pd.DataFrame) -> pd.DataFrame:
+    standardized_df["category"] = "unlabeled"
+    standardized_df["sentiment_score"] = 0.0
+    standardized_df["sentiment_label"] = "neutral"
+    return standardized_df
+
+
 def standardize_review_columns(
     review_df: pd.DataFrame,
     column_mapping: dict[str, str] | None = None,
@@ -310,20 +368,15 @@ def standardize_review_columns(
     }
     standardized_df = review_df.rename(columns=rename_map).copy()
 
-    for required_column in ("review_text", "rating", "date"):
+    for required_column in REQUIRED_STANDARD_FIELDS:
         if required_column not in standardized_df.columns:
             standardized_df[required_column] = pd.NA
 
-    for logical_name in ("review_text", "rating", "date"):
-        fallback_candidates = get_ranked_candidate_columns(review_df.columns, logical_name)
-        primary_source = resolved_mapping.get(logical_name)
-
-        for fallback_column in fallback_candidates:
-            if fallback_column == primary_source:
-                continue
-            standardized_df[logical_name] = standardized_df[logical_name].fillna(
-                review_df[fallback_column]
-            )
+    standardized_df = backfill_standardized_columns(
+        standardized_df=standardized_df,
+        source_df=review_df,
+        resolved_mapping=resolved_mapping,
+    )
 
     if "review_title" in standardized_df.columns:
         standardized_df["review_text"] = standardized_df.apply(
@@ -334,7 +387,7 @@ def standardize_review_columns(
             axis=1,
         )
 
-    standardized_df = standardized_df[["review_text", "rating", "date"]].copy()
+    standardized_df = standardized_df[list(REQUIRED_STANDARD_FIELDS)].copy()
     standardized_df["review_text"] = (
         standardized_df["review_text"].fillna("").map(clean_review_text)
     )
@@ -345,12 +398,12 @@ def standardize_review_columns(
     standardized_df["date"] = pd.to_datetime(
         standardized_df["date"], errors="coerce", utc=True
     ).dt.tz_localize(None)
+
+    # Deduplicate after text/rating/date normalization so equivalent rows collapse reliably.
     standardized_df = standardized_df.drop_duplicates(
-        subset=["review_text", "rating", "date"]
+        subset=list(REQUIRED_STANDARD_FIELDS)
     ).reset_index(drop=True)
-    standardized_df["category"] = "unlabeled"
-    standardized_df["sentiment_score"] = 0.0
-    standardized_df["sentiment_label"] = "neutral"
+    standardized_df = add_default_signal_columns(standardized_df)
 
     return standardized_df[STANDARD_COLUMNS]
 

@@ -11,55 +11,65 @@ except ImportError:  # pragma: no cover
     from preprocess import get_chart_output_paths
 
 
-def save_category_review_count_chart(
-    category_summary: pd.DataFrame,
+def save_bar_chart(
+    chart_df: pd.DataFrame,
+    value_column: str,
     output_path: str | Path,
+    title: str,
+    y_label: str,
+    bar_color: str,
+    add_zero_reference_line: bool = False,
 ) -> Path:
     chart_path = Path(output_path)
     chart_path.parent.mkdir(parents=True, exist_ok=True)
 
-    ordered_summary = category_summary.sort_values("review_count", ascending=False)
+    ordered_chart_df = chart_df.sort_values("review_count", ascending=False)
     plt.figure(figsize=(10, 5))
     plt.bar(
-        ordered_summary["category"],
-        ordered_summary["review_count"],
-        color="#4c78a8",
+        ordered_chart_df["category"],
+        ordered_chart_df[value_column],
+        color=bar_color,
     )
-    plt.title("Amazon Review Count by Customer Reaction Category")
+    if add_zero_reference_line:
+        plt.axhline(0, color="#333333", linewidth=1, linestyle="--")
+    plt.title(title)
     plt.xlabel("Category")
-    plt.ylabel("Review Count")
+    plt.ylabel(y_label)
     plt.xticks(rotation=30, ha="right")
     plt.tight_layout()
     plt.savefig(chart_path, dpi=150)
     plt.close()
 
     return chart_path
+
+
+def save_category_review_count_chart(
+    category_summary: pd.DataFrame,
+    output_path: str | Path,
+) -> Path:
+    return save_bar_chart(
+        chart_df=category_summary,
+        value_column="review_count",
+        output_path=output_path,
+        title="Amazon Review Count by Customer Reaction Category",
+        y_label="Review Count",
+        bar_color="#4c78a8",
+    )
 
 
 def save_category_avg_sentiment_chart(
     category_summary: pd.DataFrame,
     output_path: str | Path,
 ) -> Path:
-    chart_path = Path(output_path)
-    chart_path.parent.mkdir(parents=True, exist_ok=True)
-
-    ordered_summary = category_summary.sort_values("review_count", ascending=False)
-    plt.figure(figsize=(10, 5))
-    plt.bar(
-        ordered_summary["category"],
-        ordered_summary["avg_sentiment_score"],
-        color="#72b7b2",
+    return save_bar_chart(
+        chart_df=category_summary,
+        value_column="avg_sentiment_score",
+        output_path=output_path,
+        title="Average Amazon Sentiment Score by Category",
+        y_label="Average Sentiment Score",
+        bar_color="#72b7b2",
+        add_zero_reference_line=True,
     )
-    plt.axhline(0, color="#333333", linewidth=1, linestyle="--")
-    plt.title("Average Amazon Sentiment Score by Category")
-    plt.xlabel("Category")
-    plt.ylabel("Average Sentiment Score")
-    plt.xticks(rotation=30, ha="right")
-    plt.tight_layout()
-    plt.savefig(chart_path, dpi=150)
-    plt.close()
-
-    return chart_path
 
 
 def create_all_charts(

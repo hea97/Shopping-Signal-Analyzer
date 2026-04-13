@@ -140,13 +140,20 @@ CATEGORY_PRIORITY = [
     "order_management",
 ]
 
-CATEGORY_PATTERNS = {
-    category_name: [
-        re.compile(rf"(?<!\w){re.escape(keyword.lower())}(?!\w)")
-        for keyword in keywords
-    ]
-    for category_name, keywords in CATEGORY_RULES.items()
-}
+
+def compile_category_patterns(
+    category_rules: dict[str, list[str]],
+) -> dict[str, list[re.Pattern[str]]]:
+    return {
+        category_name: [
+            re.compile(rf"(?<!\w){re.escape(keyword.lower())}(?!\w)")
+            for keyword in keywords
+        ]
+        for category_name, keywords in category_rules.items()
+    }
+
+
+CATEGORY_PATTERNS = compile_category_patterns(CATEGORY_RULES)
 
 
 def count_keyword_hits(review_text: str, patterns: list[re.Pattern[str]]) -> int:
@@ -161,25 +168,28 @@ def get_category_scores(review_text: str) -> dict[str, int]:
     }
 
 
-def label_review_category(review_text: str) -> str:
-    scores = get_category_scores(review_text)
+def choose_best_category(category_scores: dict[str, int]) -> str:
     positive_scores = {
         category_name: score
-        for category_name, score in scores.items()
+        for category_name, score in category_scores.items()
         if score > 0
     }
 
     if not positive_scores:
         return OTHER_CATEGORY
 
-    best_category = max(
+    return max(
         positive_scores.items(),
         key=lambda item: (
             item[1],
             -CATEGORY_PRIORITY.index(item[0]),
         ),
     )[0]
-    return best_category
+
+
+def label_review_category(review_text: str) -> str:
+    category_scores = get_category_scores(review_text)
+    return choose_best_category(category_scores)
 
 
 def apply_rule_based_categories(review_df: pd.DataFrame) -> pd.DataFrame:
