@@ -22,6 +22,13 @@ Summarize the strongest customer reaction signals from Amazon review text.
 - most negative category: `account_access` (-1.33 avg sentiment)
 - sentiment mix: negative: 12581, positive: 6592, neutral: 2039
 
+## Actionable insights
+
+- `delivery shipping` drives 28.4% of review volume and 63% of those reviews are negative (avg sentiment -0.42). Prioritize tightening carrier SLA monitoring, failed-delivery handling, and shipment status messaging.
+- `account access` represents 7.3% of reviews but has the weakest sentiment at -1.33 with 82% negative share. Tackle simplifying verification recovery and adding a manual unlock escalation path first to remove the sharpest customer friction.
+- `pricing billing` covers 6.1% of reviews and has the strongest named sentiment at 0.45 with 43% positive share. Protect that advantage by clarifying charges, renewals, and pricing changes before payment is submitted.
+- `other` still accounts for 16.9% of reviews with avg sentiment 0.76. Review those cases first and promote repeated themes into new category rules.
+
 ## Files generated
 
 - processed reviews: `data/processed/reviews_with_signals.csv`

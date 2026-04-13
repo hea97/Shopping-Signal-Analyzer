@@ -132,6 +132,164 @@ def dataframe_to_markdown_table(summary_df: pd.DataFrame) -> str:
     return "\n".join([header, divider, *rows])
 
 
+def format_category_name(category_name: str) -> str:
+    return category_name.replace("_", " ")
+
+
+def format_share(review_count: float, total_reviews: int) -> str:
+    if total_reviews <= 0:
+        return "0.0%"
+    return f"{(float(review_count) / total_reviews) * 100:.1f}%"
+
+
+def format_ratio(value: float) -> str:
+    return f"{float(value) * 100:.0f}%"
+
+
+def get_category_action(category_name: str) -> str:
+    action_map = {
+        "delivery_shipping": "tightening carrier SLA monitoring, failed-delivery handling, and shipment status messaging",
+        "refunds_returns": "shortening refund turnaround and exposing return-status updates earlier",
+        "customer_service": "improving first-contact resolution and routing escalations faster",
+        "account_access": "simplifying verification recovery and adding a manual unlock escalation path",
+        "pricing_billing": "clarifying charges, renewals, and pricing changes before payment is submitted",
+        "prime_membership": "making renewal, cancellation, and membership status messaging clearer",
+        "product_quality": "strengthening damaged-item checks and seller quality controls",
+        "order_management": "reducing cancellation friction and surfacing order-status changes sooner",
+        OTHER_CATEGORY: "review a sample of uncategorized reviews and promote recurring themes into new rules",
+    }
+    return action_map.get(category_name, "review the underlying cases and assign a targeted follow-up action")
+
+
+def build_volume_sentiment_insight(
+    category_row: pd.Series,
+    total_reviews: int,
+    insight_type: str,
+) -> str:
+    category_name = str(category_row["category"])
+    category_label = format_category_name(category_name)
+    volume_share = format_share(category_row["review_count"], total_reviews)
+    avg_sentiment = float(category_row["avg_sentiment_score"])
+    negative_share = format_ratio(category_row["negative_share"])
+    positive_share = format_ratio(category_row["positive_share"])
+    action_text = get_category_action(category_name)
+
+    if insight_type == "volume_risk":
+        return (
+            f"- `{category_label}` drives {volume_share} of review volume and {negative_share} of those reviews are negative "
+            f"(avg sentiment {avg_sentiment:.2f}). Prioritize {action_text}."
+        )
+
+    if insight_type == "severity":
+        return (
+            f"- `{category_label}` represents {volume_share} of reviews but has the weakest sentiment at {avg_sentiment:.2f} "
+            f"with {negative_share} negative share. Tackle {action_text} first to remove the sharpest customer friction."
+        )
+
+    if insight_type == "strength":
+        return (
+            f"- `{category_label}` covers {volume_share} of reviews and has the strongest named sentiment at {avg_sentiment:.2f} "
+            f"with {positive_share} positive share. Protect that advantage by {action_text}."
+        )
+
+    return (
+        f"- `{category_label}` accounts for {volume_share} of reviews with avg sentiment {avg_sentiment:.2f}. "
+        f"Use this signal to {action_text}."
+    )
+
+
+def build_actionable_insights(category_summary: pd.DataFrame) -> list[str]:
+    if category_summary.empty:
+        return ["- No category insights are available because the summary table is empty."]
+
+    total_reviews = int(category_summary["review_count"].sum())
+    named_categories = category_summary[category_summary["category"] != OTHER_CATEGORY].copy()
+    if named_categories.empty:
+        named_categories = category_summary.copy()
+
+    significant_named_categories = named_categories[
+        named_categories["review_count"] >= max(25, int(total_reviews * 0.01))
+    ].copy()
+    if significant_named_categories.empty:
+        significant_named_categories = named_categories.copy()
+
+    candidate_sets = [
+        (
+            "volume_risk",
+            significant_named_categories.sort_values(
+                ["review_count", "negative_share", "avg_sentiment_score"],
+                ascending=[False, False, True],
+            ),
+        ),
+        (
+            "severity",
+            significant_named_categories.sort_values(
+                ["avg_sentiment_score", "review_count"],
+                ascending=[True, False],
+            ),
+        ),
+        (
+            "strength",
+            significant_named_categories.sort_values(
+                ["avg_sentiment_score", "review_count"],
+                ascending=[False, False],
+            ),
+        ),
+    ]
+
+    actionable_insights: list[str] = []
+    used_categories: set[str] = set()
+
+    for insight_type, candidate_df in candidate_sets:
+        for _, category_row in candidate_df.iterrows():
+            category_name = str(category_row["category"])
+            if category_name in used_categories:
+                continue
+            actionable_insights.append(
+                build_volume_sentiment_insight(
+                    category_row=category_row,
+                    total_reviews=total_reviews,
+                    insight_type=insight_type,
+                )
+            )
+            used_categories.add(category_name)
+            break
+
+    if len(actionable_insights) < 3:
+        remaining_categories = category_summary.sort_values(
+            ["review_count", "avg_sentiment_score"],
+            ascending=[False, False],
+        )
+        for _, category_row in remaining_categories.iterrows():
+            category_name = str(category_row["category"])
+            if category_name in used_categories:
+                continue
+            actionable_insights.append(
+                build_volume_sentiment_insight(
+                    category_row=category_row,
+                    total_reviews=total_reviews,
+                    insight_type="fallback",
+                )
+            )
+            used_categories.add(category_name)
+            if len(actionable_insights) >= 3:
+                break
+
+    other_category_rows = category_summary[
+        category_summary["category"] == OTHER_CATEGORY
+    ]
+    if not other_category_rows.empty and len(actionable_insights) < 4:
+        other_category_row = other_category_rows.iloc[0]
+        other_share = format_share(other_category_row["review_count"], total_reviews)
+        if float(other_category_row["review_count"]) / max(total_reviews, 1) >= 0.1:
+            actionable_insights.append(
+                f"- `{format_category_name(OTHER_CATEGORY)}` still accounts for {other_share} of reviews with avg sentiment "
+                f"{float(other_category_row['avg_sentiment_score']):.2f}. Review those cases first and promote repeated themes into new category rules."
+            )
+
+    return actionable_insights[:4]
+
+
 def build_insight_report_markdown(
     feature_df: pd.DataFrame,
     summary_tables: dict[str, pd.DataFrame],
@@ -202,6 +360,7 @@ def build_insight_report_markdown(
         else "- most negative category: unavailable",
         f"- sentiment mix: {sentiment_mix}",
     ]
+    actionable_insights = build_actionable_insights(category_summary)
 
     top_category_table = dataframe_to_markdown_table(category_summary.head(8))
 
@@ -223,6 +382,10 @@ def build_insight_report_markdown(
         "## Signal highlights",
         "",
         *highlight_lines,
+        "",
+        "## Actionable insights",
+        "",
+        *actionable_insights,
         "",
         "## Files generated",
         "",
