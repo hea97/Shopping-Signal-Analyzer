@@ -6,7 +6,7 @@ Summarize the strongest customer reaction signals from Amazon review text.
 
 ## Dataset
 
-- source file: `Amazon_Reviews.csv`
+- source file: `data\raw\Amazon_Reviews.csv`
 - review count: 21055
 - date range: 2007-08-27 to 2024-09-17
 - inferred column mapping:

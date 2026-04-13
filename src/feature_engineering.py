@@ -107,7 +107,7 @@ def dataframe_to_markdown_table(summary_df: pd.DataFrame) -> str:
 def build_insight_report_markdown(
     feature_df: pd.DataFrame,
     summary_tables: dict[str, pd.DataFrame],
-    dataset_path: str | Path,
+    dataset_label: str,
     column_mapping: dict[str, str] | None = None,
 ) -> str:
     category_summary = summary_tables["category_summary"]
@@ -184,7 +184,7 @@ def build_insight_report_markdown(
         "",
         "## Dataset",
         "",
-        f"- source file: `{Path(dataset_path).name}`",
+        f"- source file: `{dataset_label}`",
         f"- review count: {len(feature_df)}",
         f"- date range: {date_range}",
         "- inferred column mapping:",
@@ -250,10 +250,18 @@ def save_insight_report(
 ) -> Path:
     project_paths = ensure_project_directories(base_dir)
     report_path = project_paths["reports"] / "insight_report.md"
+    dataset_path_obj = Path(dataset_path)
+    base_path = Path(base_dir).resolve()
+
+    try:
+        dataset_label = str(dataset_path_obj.resolve().relative_to(base_path))
+    except ValueError:
+        dataset_label = str(dataset_path_obj)
+
     report_content = build_insight_report_markdown(
         feature_df=feature_df,
         summary_tables=summary_tables,
-        dataset_path=dataset_path,
+        dataset_label=dataset_label,
         column_mapping=column_mapping,
     )
     report_path.write_text(report_content, encoding="utf-8")

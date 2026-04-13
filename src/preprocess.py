@@ -71,10 +71,11 @@ TOKEN_HINTS = {
 }
 
 REVIEW_FILE_CANDIDATES = [
-    "Amazon_Reviews.csv",
     "data/raw/Amazon_Reviews.csv",
-    "amazon_reviews.csv",
     "data/raw/amazon_reviews.csv",
+    "data/raw/demo_amazon_reviews.csv",
+    "Amazon_Reviews.csv",
+    "amazon_reviews.csv",
 ]
 
 TRAILING_DATE_PATTERN = re.compile(

@@ -4,7 +4,7 @@ A simple MVP that turns Amazon review text into structured customer reaction sig
 
 ## What it does
 
-- safely loads raw review CSV files, including the current `Amazon_Reviews.csv`
+- safely loads raw review CSV files, with `data/raw/Amazon_Reviews.csv` as the primary source path
 - infers input columns and standardizes them to:
   `review_text`, `rating`, `date`, `category`, `sentiment_score`, `sentiment_label`
 - cleans text, parses rating strings, and combines review title + body when available
@@ -17,10 +17,10 @@ A simple MVP that turns Amazon review text into structured customer reaction sig
 
 ```text
 Shopping-Signal-Analyzer/
-|- Amazon_Reviews.csv
 |- data/
 |  |- processed/
 |  `- raw/
+|     `- Amazon_Reviews.csv
 |- notebooks/
 |  `- shopping_signal_mvp.ipynb
 |- reports/
@@ -52,14 +52,15 @@ It currently handles:
 - column name variants such as `Review Text`, `Review Date`, `Date of Experience`, `Rating`, and `Review Title`
 - rating strings such as `Rated 1 out of 5 stars`
 - CSV parsing fallback for files that fail under pandas' default CSV engine
-- notebook execution with either the real `Amazon_Reviews.csv` file or a small demo fallback
+- notebook execution with either the real `data/raw/Amazon_Reviews.csv` file or a small demo fallback
 
 The notebook first looks for these files:
 
-- `Amazon_Reviews.csv`
 - `data/raw/Amazon_Reviews.csv`
 - `amazon_reviews.csv`
 - `data/raw/amazon_reviews.csv`
+- `data/raw/demo_amazon_reviews.csv`
+- `Amazon_Reviews.csv`
 
 ## Current rule-based categories
 
