@@ -1,19 +1,22 @@
 # Shopping Signal Analyzer
 
-A simple MVP that turns Amazon review text into structured customer reaction signals with a pandas-first pipeline.
+Amazon 리뷰 텍스트를 구조화된 고객 반응 신호로 변환하는, `pandas` 중심의 간단한 MVP 프로젝트입니다.
 
-## What it does
+## 프로젝트 개요
 
-- safely loads raw review CSV files, with `data/raw/Amazon_Reviews.csv` as the primary source path
-- infers input columns and standardizes them to:
+이 프로젝트는 다음 작업을 수행합니다.
+
+- 원본 리뷰 CSV를 안전하게 불러옵니다. 기본 입력 경로는 `data/raw/Amazon_Reviews.csv`입니다.
+- 입력 컬럼명을 추론하고 아래 표준 컬럼으로 정규화합니다.
   `review_text`, `rating`, `date`, `category`, `sentiment_score`, `sentiment_label`
-- cleans text, parses rating strings, combines review title + body when available, and removes exact duplicate standardized reviews
-- assigns rule-based issue categories
-- assigns rule-based sentiment scores and labels from positive and negative word counts
-- saves processed CSV outputs, charts, and a markdown insight report
-- includes a notebook that runs the full end-to-end flow
+- 텍스트를 정제하고, 평점 문자열을 숫자로 파싱하며, 가능한 경우 리뷰 제목과 본문을 합칩니다.
+- 정규화된 기준으로 완전 중복 리뷰를 제거합니다.
+- 규칙 기반 카테고리 라벨링을 적용합니다.
+- 긍정/부정 단어 수를 기반으로 규칙 기반 감정 점수와 라벨을 생성합니다.
+- 처리 결과 CSV, 차트, 마크다운 인사이트 리포트를 저장합니다.
+- 전체 흐름을 재현할 수 있는 노트북을 포함합니다.
 
-## Project structure
+## 프로젝트 구조
 
 ```text
 Shopping-Signal-Analyzer/
@@ -37,27 +40,27 @@ Shopping-Signal-Analyzer/
 `- README.md
 ```
 
-## Install
+## 설치
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Run commands from the repository root so the notebook and output paths resolve cleanly.
+노트북과 출력 경로가 올바르게 동작하도록, 저장소 루트에서 명령을 실행하는 것을 권장합니다.
 
-## Input handling
+## 입력 데이터 처리 방식
 
-The pipeline is designed for real-world review CSVs where column names and formats are not perfectly clean.
+이 파이프라인은 실제 리뷰 CSV처럼 컬럼명과 형식이 일정하지 않은 데이터도 처리할 수 있도록 설계되었습니다.
 
-It currently handles:
+현재 지원하는 항목은 다음과 같습니다.
 
-- column name variants such as `Review Text`, `Review Date`, `Date of Experience`, `Rating`, and `Review Title`
-- rating strings such as `Rated 1 out of 5 stars`
-- missing values by backfilling from other likely source columns when possible
-- CSV parsing fallback for files that fail under pandas' default CSV engine
-- notebook execution with either the real `data/raw/Amazon_Reviews.csv` file or a small demo fallback
+- `Review Text`, `Review Date`, `Date of Experience`, `Rating`, `Review Title` 같은 컬럼명 변형 처리
+- `Rated 1 out of 5 stars` 같은 평점 문자열 파싱
+- 가능한 경우 다른 후보 컬럼을 이용한 결측값 보완
+- 기본 `pandas` CSV 엔진에서 실패할 때를 대비한 안전한 파싱 fallback
+- 실제 `data/raw/Amazon_Reviews.csv` 또는 작은 데모 파일을 사용하는 노트북 실행 흐름
 
-The notebook first looks for these files:
+노트북은 아래 순서로 입력 파일을 탐색합니다.
 
 - `data/raw/Amazon_Reviews.csv`
 - `amazon_reviews.csv`
@@ -65,7 +68,7 @@ The notebook first looks for these files:
 - `data/raw/demo_amazon_reviews.csv`
 - `Amazon_Reviews.csv`
 
-## Current rule-based categories
+## 현재 규칙 기반 카테고리
 
 - `customer_service`
 - `delivery_shipping`
@@ -77,25 +80,25 @@ The notebook first looks for these files:
 - `order_management`
 - `other`
 
-## Run the notebook
+## 노트북 실행
 
 ```bash
 jupyter notebook notebooks/shopping_signal_mvp.ipynb
 ```
 
-Notebook flow:
+노트북 실행 흐름은 다음과 같습니다.
 
-1. resolve the review CSV path
-2. load the CSV with safe parsing fallbacks
-3. standardize columns to the internal schema
-4. label categories and sentiment
-5. save processed outputs, charts, and the insight report
+1. 리뷰 CSV 경로를 확인합니다.
+2. 안전한 파싱 fallback과 함께 CSV를 불러옵니다.
+3. 내부 표준 스키마에 맞게 컬럼명을 정규화합니다.
+4. 카테고리와 감정 라벨을 생성합니다.
+5. 처리 결과, 차트, 인사이트 리포트를 저장합니다.
 
-If no review CSV is found, the notebook writes a tiny demo file to `data/raw/demo_amazon_reviews.csv`.
+리뷰 CSV를 찾지 못하면, 노트북은 `data/raw/demo_amazon_reviews.csv`에 작은 데모 파일을 생성합니다.
 
-## Outputs
+## 생성 산출물
 
-Running the notebook saves these artifacts:
+노트북을 실행하면 아래 파일들이 생성됩니다.
 
 - `data/processed/reviews_with_signals.csv`
 - `data/processed/category_summary.csv`
@@ -105,9 +108,9 @@ Running the notebook saves these artifacts:
 - `reports/figures/category_avg_sentiment.png`
 - `reports/insight_report.md`
 
-## MVP notes
+## MVP 메모
 
-- category labeling is rule-based and tuned for the current Amazon review dataset
-- sentiment analysis is rule-based and uses word-count text scoring with a small rating adjustment
-- the report is generated from the same summary tables used for the charts
-- the code stays intentionally simple and modular
+- 카테고리 라벨링은 규칙 기반이며, 현재 Amazon 리뷰 데이터셋에 맞춰 조정되어 있습니다.
+- 감정 분석은 규칙 기반이며, 단어 수 기반 점수와 작은 평점 보정을 함께 사용합니다.
+- 리포트는 차트와 동일한 summary 테이블을 바탕으로 생성됩니다.
+- 코드는 과도하게 복잡하게 만들지 않고, 단순하고 모듈화된 구조를 유지합니다.
